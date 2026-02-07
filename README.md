@@ -413,6 +413,7 @@ require("image").setup({
   editor_only_render_when_focused = false, -- auto show/hide images when the editor gains/looses focus
   tmux_show_only_in_active_window = false, -- auto show/hide images in the correct Tmux window (needs visual-activity off)
   hijack_file_patterns = { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.avif" }, -- render image files as images when opened
+  error_cache_ttl_ms = 120000, -- time in milliseconds to cache errors (default 2 minutes)
 })
 ```
 
@@ -455,6 +456,25 @@ require('image').setup({
 ```
 
 Check https://github.com/3rd/image.nvim/issues/190#issuecomment-2378156235 for how to configure this for Obsidian.
+
+### Error Handling
+
+The plugin includes graceful error handling for failed image renders:
+
+- **Error caching**: When an image fails to render (e.g., missing file, corrupt image, processing error), the error is cached for a configurable period (default 2 minutes)
+- **Rate limiting**: During the cache period, the plugin won't attempt to re-render the failed image, preventing repeated error messages
+- **Inline error display**: For inline images (like in Markdown), errors are displayed as virtual text at the end of the line using the `ErrorMsg` highlight group
+- **Silent failures**: Errors are logged but don't spam the Neovim message area
+
+You can configure the error cache time-to-live:
+
+```lua
+require("image").setup({
+  error_cache_ttl_ms = 120000, -- 2 minutes in milliseconds (default)
+})
+```
+
+Set to `0` to disable error caching (not recommended as it may cause performance issues with broken images).
 
 ## How to ...?
 

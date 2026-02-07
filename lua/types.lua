@@ -22,6 +22,7 @@
 ---@field disable_decorator_handling boolean
 ---@field hijacked_win_buf_images { [string]: Image }
 ---@field processor ImageProcessor
+---@field error_cache { [string]: { error: string, timestamp: number } }
 
 ---@class DocumentIntegrationOptions
 ---@field enabled? boolean
@@ -58,6 +59,7 @@
 ---@field hijack_file_patterns? string[]
 ---@field processor? string
 ---@field debug? DebugOptions
+---@field error_cache_ttl_ms? number
 
 ---@class BackendFeatures
 ---@field crop boolean
@@ -144,6 +146,7 @@
 ---@field has_extmark_moved fun (self:Image): (boolean, number?, number?)
 ---@field ignore_global_max_size? boolean
 ---@field render_offset_top? number
+---@field error_extmark? number
 
 ---@class ImageProcessor
 --- We need to:
