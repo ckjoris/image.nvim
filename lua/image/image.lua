@@ -4,7 +4,7 @@ local log = require("image/utils/logger").within("image")
 
 -- Constants for error message display
 local MAX_ERROR_MSG_LENGTH = 80
-local TRUNCATE_AT = 77
+local TRUNCATE_AT = MAX_ERROR_MSG_LENGTH - 3 -- Leave room for "..."
 
 -- { ["buf:row:col"]: { id, height } }
 ---@type table<string, { id: number, height: number }>
@@ -91,7 +91,6 @@ function Image:render(geometry)
       self.last_modified = current_last_modified
       self.resize_hash = nil
       self.cropped_hash = nil
-      self.crop_hash = nil
 
       local format = self.global_state.processor.get_format(self.original_path)
 
