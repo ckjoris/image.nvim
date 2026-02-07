@@ -54,113 +54,193 @@ function Image:render(geometry)
   -- be left in place
   if vim.fn.getcmdwintype() ~= "" then return end
 
-  -- track last_modified and wipe cache
-  local current_last_modified = vim.fn.getftime(self.original_path)
-  log.debug(("timestamp: %s, last_modified: %s"):format(current_last_modified, self.last_modified))
-  if self.last_modified ~= current_last_modified then
-    self.last_modified = current_last_modified
-    self.resize_hash = nil
-    self.cropped_hash = nil
-    self.resize_hash = nil
-
-    local format = self.global_state.processor.get_format(self.original_path)
-
-    if format ~= "png" then
-      local converted_path = self.global_state.tmp_dir .. "/" .. vim.base64.encode(self.id) .. "-source.png"
-      self.path = self.global_state.processor.convert_to_png(self.original_path, converted_path)
+  -- Check error cache before attempting to render
+  local error_cache_key = self.id
+  local cached_error = self.global_state.error_cache[error_cache_key]
+  if cached_error then
+    local ttl = self.global_state.options.error_cache_ttl_ms or 120000
+    local elapsed = vim.loop.hrtime() / 1000000 - cached_error.timestamp
+    if elapsed < ttl then
+      log.debug(("skipping render due to cached error (elapsed: %.1fms, ttl: %dms)"):format(elapsed, ttl))
+      -- Display cached error inline if buffer/window available
+      if self.buffer and self.inline and self.geometry.y then
+        self:display_error_inline(cached_error.error)
+      end
+      return
+    else
+      -- Error cache expired, clear it
+      self.global_state.error_cache[error_cache_key] = nil
+      -- Also clear any error extmark
+      if self.error_extmark and self.buffer then
+        pcall(vim.api.nvim_buf_del_extmark, self.buffer, self.global_state.extmarks_namespace, self.error_extmark)
+        self.error_extmark = nil
+      end
     end
-
-    self:clear()
-    local dimensions = self.global_state.processor.get_dimensions(self.path)
-    self.image_width = dimensions.width
-    self.image_height = dimensions.height
-
-    renderer.clear_cache_for_path(self.original_path)
   end
 
-  log.debug(("---------------- %s ----------------"):format(self.id))
-  local was_rendered = renderer.render(self)
+  -- Wrap the entire rendering logic in pcall to catch errors gracefully
+  local success, err = pcall(function()
+    -- track last_modified and wipe cache
+    local current_last_modified = vim.fn.getftime(self.original_path)
+    log.debug(("timestamp: %s, last_modified: %s"):format(current_last_modified, self.last_modified))
+    if self.last_modified ~= current_last_modified then
+      self.last_modified = current_last_modified
+      self.resize_hash = nil
+      self.cropped_hash = nil
+      self.resize_hash = nil
 
-  log.debug(
-    ("success: %s x: %s, y: %s, width: %s, height: %s"):format(
-      was_rendered,
-      self.geometry.x,
-      self.geometry.y,
-      self.geometry.width,
-      self.geometry.height
+      local format = self.global_state.processor.get_format(self.original_path)
+
+      if format ~= "png" then
+        local converted_path = self.global_state.tmp_dir .. "/" .. vim.base64.encode(self.id) .. "-source.png"
+        self.path = self.global_state.processor.convert_to_png(self.original_path, converted_path)
+      end
+
+      self:clear()
+      local dimensions = self.global_state.processor.get_dimensions(self.path)
+      self.image_width = dimensions.width
+      self.image_height = dimensions.height
+
+      renderer.clear_cache_for_path(self.original_path)
+    end
+
+    log.debug(("---------------- %s ----------------"):format(self.id))
+    local was_rendered = renderer.render(self)
+
+    log.debug(
+      ("success: %s x: %s, y: %s, width: %s, height: %s"):format(
+        was_rendered,
+        self.geometry.x,
+        self.geometry.y,
+        self.geometry.width,
+        self.geometry.height
+      )
     )
-  )
 
-  -- clear if already rendered but rendering this should be prevented
-  if self.is_rendered and not was_rendered then
-    self.global_state.backend.clear(self.id, true)
-    return
-  end
+    -- clear if already rendered but rendering this should be prevented
+    if self.is_rendered and not was_rendered then
+      self.global_state.backend.clear(self.id, true)
+      return
+    end
 
-  -- virtual padding
-  if was_rendered and self.buffer and self.inline then
-    local row = self.geometry.y
-    local col = self.geometry.x
-    local height = self.rendered_geometry.height
+    -- virtual padding
+    if was_rendered and self.buffer and self.inline then
+      local row = self.geometry.y
+      local col = self.geometry.x
+      local height = self.rendered_geometry.height
 
-    local extmark_key = self.buffer .. ":" .. row .. ":" .. col
-    local previous_extmark = buf_extmark_map[extmark_key]
+      local extmark_key = self.buffer .. ":" .. row .. ":" .. col
+      local previous_extmark = buf_extmark_map[extmark_key]
 
-    -- create extmark
-    if was_rendered then
-      local total_height = height + (self.render_offset_top or 0)
-      local has_up_to_date_extmark = previous_extmark and previous_extmark.height == total_height
+      -- create extmark
+      if was_rendered then
+        local total_height = height + (self.render_offset_top or 0)
+        local has_up_to_date_extmark = previous_extmark and previous_extmark.height == total_height
 
-      if not has_up_to_date_extmark then
-        if previous_extmark ~= nil then
-          log.debug(("clearing extmark %s"):format(previous_extmark.id))
-          vim.api.nvim_buf_del_extmark(self.buffer, self.global_state.extmarks_namespace, previous_extmark.id)
-          buf_extmark_map[extmark_key] = nil
-        end
-
-        local filler = {}
-        local extmark_opts = { id = self.internal_id, strict = false }
-        if self.with_virtual_padding then
-          -- only reserve real height for the extmark, padding is applied during rendering
-          local total_lines = height
-          for _ = 0, total_lines - 1 do
-            filler[#filler + 1] = { { " ", "" } }
+        if not has_up_to_date_extmark then
+          if previous_extmark ~= nil then
+            log.debug(("clearing extmark %s"):format(previous_extmark.id))
+            vim.api.nvim_buf_del_extmark(self.buffer, self.global_state.extmarks_namespace, previous_extmark.id)
+            buf_extmark_map[extmark_key] = nil
           end
-          extmark_opts.virt_lines = filler
-        end
 
-        log.debug(("creating extmark %s"):format(self.internal_id))
-        local extmark_row = math.max(row or 0, 0)
-        local extmark_col = math.max(col or 0, 0)
-        local ok, extmark_id = pcall(
-          vim.api.nvim_buf_set_extmark,
-          self.buffer,
-          self.global_state.extmarks_namespace,
-          extmark_row,
-          extmark_col,
-          extmark_opts
-        )
-        if ok then
-          buf_extmark_map[extmark_key] = { id = self.internal_id, height = total_height or 0 }
-          self.extmark = { id = extmark_id, row = extmark_row, col = extmark_col }
+          local filler = {}
+          local extmark_opts = { id = self.internal_id, strict = false }
+          if self.with_virtual_padding then
+            -- only reserve real height for the extmark, padding is applied during rendering
+            local total_lines = height
+            for _ = 0, total_lines - 1 do
+              filler[#filler + 1] = { { " ", "" } }
+            end
+            extmark_opts.virt_lines = filler
+          end
+
+          log.debug(("creating extmark %s"):format(self.internal_id))
+          local extmark_row = math.max(row or 0, 0)
+          local extmark_col = math.max(col or 0, 0)
+          local ok, extmark_id = pcall(
+            vim.api.nvim_buf_set_extmark,
+            self.buffer,
+            self.global_state.extmarks_namespace,
+            extmark_row,
+            extmark_col,
+            extmark_opts
+          )
+          if ok then
+            buf_extmark_map[extmark_key] = { id = self.internal_id, height = total_height or 0 }
+            self.extmark = { id = extmark_id, row = extmark_row, col = extmark_col }
+          end
+        end
+      end
+
+      if self.with_virtual_padding then
+        -- rerender any images that are below this one
+        local to_be_rerendered = vim.tbl_filter(function(x)
+          return x.is_rendered and x.buffer == self.buffer and x.geometry.y > self.geometry.y
+        end, vim.tbl_values(self.global_state.images))
+        table.sort(to_be_rerendered, function(a, b)
+          return a.geometry.y < b.geometry.y
+        end)
+        for _, image in ipairs(to_be_rerendered) do
+          image:render()
+
+          if image.with_virtual_padding then break end
         end
       end
     end
+  end)
 
-    if self.with_virtual_padding then
-      -- rerender any images that are below this one
-      local to_be_rerendered = vim.tbl_filter(function(x)
-        return x.is_rendered and x.buffer == self.buffer and x.geometry.y > self.geometry.y
-      end, vim.tbl_values(self.global_state.images))
-      table.sort(to_be_rerendered, function(a, b)
-        return a.geometry.y < b.geometry.y
-      end)
-      for _, image in ipairs(to_be_rerendered) do
-        image:render()
-
-        if image.with_virtual_padding then break end
-      end
+  -- Handle error gracefully
+  if not success then
+    local error_msg = tostring(err)
+    log.error(("render error for %s"):format(self.id), { error = error_msg })
+    
+    -- Cache the error
+    self.global_state.error_cache[error_cache_key] = {
+      error = error_msg,
+      timestamp = vim.loop.hrtime() / 1000000, -- convert to milliseconds
+    }
+    
+    -- Display error inline if in inline mode
+    if self.buffer and self.inline and self.geometry.y then
+      self:display_error_inline(error_msg)
     end
+  end
+end
+
+-- Display error message inline using extmarks
+function Image:display_error_inline(error_msg)
+  if not self.buffer or not self.geometry.y then return end
+  
+  -- Clear any existing error extmark
+  if self.error_extmark then
+    pcall(vim.api.nvim_buf_del_extmark, self.buffer, self.global_state.extmarks_namespace, self.error_extmark)
+  end
+  
+  -- Truncate error message to be more readable
+  local short_msg = error_msg:match("^([^\n]+)") or error_msg
+  if #short_msg > 80 then
+    short_msg = short_msg:sub(1, 77) .. "..."
+  end
+  
+  -- Create an error extmark with virtual text
+  local row = math.max(self.geometry.y or 0, 0)
+  local col = math.max(self.geometry.x or 0, 0)
+  
+  local ok, extmark_id = pcall(
+    vim.api.nvim_buf_set_extmark,
+    self.buffer,
+    self.global_state.extmarks_namespace,
+    row,
+    col,
+    {
+      virt_text = { { " [Image Error: " .. short_msg .. "] ", "ErrorMsg" } },
+      virt_text_pos = "eol",
+    }
+  )
+  
+  if ok then
+    self.error_extmark = extmark_id
   end
 end
 
@@ -181,6 +261,11 @@ function Image:clear(shallow)
   if self.inline and self.buffer then
     if vim.api.nvim_buf_is_valid(self.buffer) then
       vim.api.nvim_buf_del_extmark(self.buffer, self.global_state.extmarks_namespace, self.internal_id)
+      -- Also clear any error extmark
+      if self.error_extmark then
+        pcall(vim.api.nvim_buf_del_extmark, self.buffer, self.global_state.extmarks_namespace, self.error_extmark)
+        self.error_extmark = nil
+      end
     end
     buf_extmark_map[self.buffer .. ":" .. self.geometry.y .. ":" .. self.geometry.x] = nil
   end

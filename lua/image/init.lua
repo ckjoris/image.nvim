@@ -50,6 +50,7 @@ local default_options = {
   tmux_show_only_in_active_window = false,
   ignore_download_error = false,
   hijack_file_patterns = { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.avif" },
+  error_cache_ttl_ms = 120000, -- 2 minutes default
 }
 
 ---@type State
@@ -66,6 +67,7 @@ local state = {
   disable_decorator_handling = false,
   hijacked_win_buf_images = {},
   enabled = true,
+  error_cache = {},
 }
 
 ---@type API
