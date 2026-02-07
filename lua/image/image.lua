@@ -2,6 +2,10 @@ local renderer = require("image/renderer")
 local utils = require("image/utils")
 local log = require("image/utils/logger").within("image")
 
+-- Constants for error message display
+local MAX_ERROR_MSG_LENGTH = 80
+local TRUNCATE_AT = 77
+
 -- { ["buf:row:col"]: { id, height } }
 ---@type table<string, { id: number, height: number }>
 local buf_extmark_map = {}
@@ -87,7 +91,7 @@ function Image:render(geometry)
       self.last_modified = current_last_modified
       self.resize_hash = nil
       self.cropped_hash = nil
-      self.resize_hash = nil
+      self.crop_hash = nil
 
       local format = self.global_state.processor.get_format(self.original_path)
 
@@ -219,8 +223,8 @@ function Image:display_error_inline(error_msg)
   
   -- Truncate error message to be more readable
   local short_msg = error_msg:match("^([^\n]+)") or error_msg
-  if #short_msg > 80 then
-    short_msg = short_msg:sub(1, 77) .. "..."
+  if #short_msg > MAX_ERROR_MSG_LENGTH then
+    short_msg = short_msg:sub(1, TRUNCATE_AT) .. "..."
   end
   
   -- Create an error extmark with virtual text
