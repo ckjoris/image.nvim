@@ -38,12 +38,12 @@ function MagickCliProcessor.get_format(path)
   end)
 
   vim.loop.read_start(stdout, function(err, data)
-    assert(not err, err)
+    if err then return end
     if data then output = output .. data end
   end)
 
   vim.loop.read_start(stderr, function(err, data)
-    assert(not err, err)
+    if err then return end
     if data then error_output = error_output .. data end
   end)
 
@@ -78,7 +78,7 @@ function MagickCliProcessor.convert_to_png(path, output_path)
   end)
 
   vim.loop.read_start(stderr, function(err, data)
-    assert(not err, err)
+    if err then return end
     if data then error_output = error_output .. data end
   end)
 
@@ -118,12 +118,12 @@ function MagickCliProcessor.get_dimensions(path)
   end)
 
   vim.loop.read_start(stdout, function(err, data)
-    assert(not err, err)
+    if err then return end
     if data then output = output .. data end
   end)
 
   vim.loop.read_start(stderr, function(err, data)
-    assert(not err, err)
+    if err then return end
     if data then error_output = error_output .. data end
   end)
 
@@ -159,7 +159,7 @@ function MagickCliProcessor.resize(path, width, height, output_path)
   end)
 
   vim.loop.read_start(stderr, function(err, data)
-    assert(not err, err)
+    if err then return end
     if data then error_output = error_output .. data end
   end)
 
@@ -195,7 +195,7 @@ function MagickCliProcessor.crop(path, x, y, width, height, output_path)
   end)
 
   vim.loop.read_start(stderr, function(err, data)
-    assert(not err, err)
+    if err then return end
     if data then error_output = error_output .. data end
   end)
 
@@ -231,7 +231,7 @@ function MagickCliProcessor.brightness(path, brightness, output_path)
   end)
 
   vim.loop.read_start(stderr, function(err, data)
-    assert(not err, err)
+    if err then return end
     if data then error_output = error_output .. data end
   end)
 
@@ -267,7 +267,7 @@ function MagickCliProcessor.saturation(path, saturation, output_path)
   end)
 
   vim.loop.read_start(stderr, function(err, data)
-    assert(not err, err)
+    if err then return end
     if data then error_output = error_output .. data end
   end)
 
@@ -303,7 +303,7 @@ function MagickCliProcessor.hue(path, hue, output_path)
   end)
 
   vim.loop.read_start(stderr, function(err, data)
-    assert(not err, err)
+    if err then return end
     if data then error_output = error_output .. data end
   end)
 
