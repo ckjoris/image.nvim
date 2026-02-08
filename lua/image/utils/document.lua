@@ -114,12 +114,18 @@ local create_document_integration = function(config)
 
             -- Create a floating window for the image
             local term_size = utils.term.get_size()
+            local max_width = math.floor(term_size.screen_cols / 2)
+            -- Constrain height to available space below cursor
+            local cursor_row = vim.fn.screenrow()
+            local cmdheight = vim.o.cmdheight
+            local border_rows = 2 -- top and bottom border
+            local max_height = math.max(term_size.screen_rows - cursor_row - cmdheight - border_rows, 1)
             local width, height = utils.math.adjust_to_aspect_ratio(
               term_size,
               image.image_width,
               image.image_height,
-              math.floor(term_size.screen_cols / 2),
-              0
+              max_width,
+              max_height
             )
             local win_config = {
               relative = "cursor",
