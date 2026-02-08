@@ -23,6 +23,7 @@ function MagickCliProcessor.get_format(path)
   -- fallback to slower method:
   guard()
   local result = nil
+  local callback_error = nil
   local stdout = vim.loop.new_pipe()
   local stderr = vim.loop.new_pipe()
   local output = ""
@@ -33,8 +34,11 @@ function MagickCliProcessor.get_format(path)
     stdio = { nil, stdout, stderr },
     hide = true,
   }, function(code)
-    if code ~= 0 then error(error_output ~= "" and error_output or "Failed to get format") end
-    result = output:lower():gsub("%s+$", "")
+    if code ~= 0 then
+      callback_error = error_output ~= "" and error_output or "Failed to get format"
+    else
+      result = output:lower():gsub("%s+$", "")
+    end
   end)
 
   vim.loop.read_start(stdout, function(err, data)
@@ -48,8 +52,9 @@ function MagickCliProcessor.get_format(path)
   end)
 
   local success = vim.wait(5000, function()
-    return result ~= nil
+    return result ~= nil or callback_error ~= nil
   end, 10)
+  if callback_error then error(callback_error) end
   if not success then error("identify format detection timed out") end
   return result
 end
@@ -61,20 +66,24 @@ function MagickCliProcessor.convert_to_png(path, output_path)
 
   local out_path = output_path or path:gsub("%.[^.]+$", ".png")
   local done = false
+  local callback_error = nil
   local stdout = vim.loop.new_pipe()
   local stderr = vim.loop.new_pipe()
   local error_output = ""
 
-  -- for GIFs convert the first frame
-  if actual_format == "gif" then path = path .. "[0]" end
+  -- for GIFs/PDFs convert the first frame/page
+  if actual_format == "gif" or actual_format == "pdf" then path = path .. "[0]" end
 
   vim.loop.spawn(convert_cmd, {
     args = { path, "png:" .. out_path },
     stdio = { nil, stdout, stderr },
     hide = true,
   }, function(code)
-    if code ~= 0 then error(error_output ~= "" and error_output or "Failed to convert to PNG") end
-    done = true
+    if code ~= 0 then
+      callback_error = error_output ~= "" and error_output or "Failed to convert to PNG"
+    else
+      done = true
+    end
   end)
 
   vim.loop.read_start(stderr, function(err, data)
@@ -83,9 +92,10 @@ function MagickCliProcessor.convert_to_png(path, output_path)
   end)
 
   local success = vim.wait(10000, function()
-    return done
+    return done or callback_error ~= nil
   end, 10)
 
+  if callback_error then error(callback_error) end
   if not success then error("convert timed out") end
 
   return out_path
@@ -99,22 +109,26 @@ function MagickCliProcessor.get_dimensions(path)
 
   local actual_format = MagickCliProcessor.get_format(path)
 
+  local callback_error = nil
   local stdout = vim.loop.new_pipe()
   local stderr = vim.loop.new_pipe()
   local output = ""
   local error_output = ""
 
-  -- GIF
-  if actual_format == "gif" then path = path .. "[0]" end
+  -- GIF/PDF
+  if actual_format == "gif" or actual_format == "pdf" then path = path .. "[0]" end
 
   vim.loop.spawn(has_magick and "magick" or "identify", {
     args = has_magick and { "identify", "-format", "%wx%h", path } or { "-format", "%wx%h", path },
     stdio = { nil, stdout, stderr },
     hide = true,
   }, function(code)
-    if code ~= 0 then error(error_output ~= "" and error_output or "Failed to get dimensions") end
-    local width, height = output:match("(%d+)x(%d+)")
-    result = { width = tonumber(width), height = tonumber(height) }
+    if code ~= 0 then
+      callback_error = error_output ~= "" and error_output or "Failed to get dimensions"
+    else
+      local width, height = output:match("(%d+)x(%d+)")
+      result = { width = tonumber(width), height = tonumber(height) }
+    end
   end)
 
   vim.loop.read_start(stdout, function(err, data)
@@ -128,9 +142,10 @@ function MagickCliProcessor.get_dimensions(path)
   end)
 
   local success = vim.wait(5000, function()
-    return result ~= nil
+    return result ~= nil or callback_error ~= nil
   end, 10)
 
+  if callback_error then error(callback_error) end
   if not success then error("identify dimensions timed out") end
 
   return result
@@ -140,6 +155,7 @@ function MagickCliProcessor.resize(path, width, height, output_path)
   guard()
   local out_path = output_path or path:gsub("%.([^.]+)$", "-resized.%1")
   local done = false
+  local callback_error = nil
   local stdout = vim.loop.new_pipe()
   local stderr = vim.loop.new_pipe()
   local error_output = ""
@@ -154,8 +170,11 @@ function MagickCliProcessor.resize(path, width, height, output_path)
     stdio = { nil, stdout, stderr },
     hide = true,
   }, function(code)
-    if code ~= 0 then error(error_output ~= "" and error_output or "Failed to resize") end
-    done = true
+    if code ~= 0 then
+      callback_error = error_output ~= "" and error_output or "Failed to resize"
+    else
+      done = true
+    end
   end)
 
   vim.loop.read_start(stderr, function(err, data)
@@ -164,9 +183,10 @@ function MagickCliProcessor.resize(path, width, height, output_path)
   end)
 
   local success = vim.wait(10000, function()
-    return done
+    return done or callback_error ~= nil
   end, 10)
 
+  if callback_error then error(callback_error) end
   if not success then error("operation timed out") end
 
   return out_path
@@ -176,6 +196,7 @@ function MagickCliProcessor.crop(path, x, y, width, height, output_path)
   guard()
   local out_path = output_path or path:gsub("%.([^.]+)$", "-cropped.%1")
   local done = false
+  local callback_error = nil
   local stdout = vim.loop.new_pipe()
   local stderr = vim.loop.new_pipe()
   local error_output = ""
@@ -190,8 +211,11 @@ function MagickCliProcessor.crop(path, x, y, width, height, output_path)
     stdio = { nil, stdout, stderr },
     hide = true,
   }, function(code)
-    if code ~= 0 then error(error_output ~= "" and error_output or "Failed to crop") end
-    done = true
+    if code ~= 0 then
+      callback_error = error_output ~= "" and error_output or "Failed to crop"
+    else
+      done = true
+    end
   end)
 
   vim.loop.read_start(stderr, function(err, data)
@@ -200,9 +224,10 @@ function MagickCliProcessor.crop(path, x, y, width, height, output_path)
   end)
 
   local success = vim.wait(10000, function()
-    return done
+    return done or callback_error ~= nil
   end, 10)
 
+  if callback_error then error(callback_error) end
   if not success then error("operation timed out") end
 
   return out_path
@@ -212,6 +237,7 @@ function MagickCliProcessor.brightness(path, brightness, output_path)
   guard()
   local out_path = output_path or path:gsub("%.([^.]+)$", "-bright.%1")
   local done = false
+  local callback_error = nil
   local stdout = vim.loop.new_pipe()
   local stderr = vim.loop.new_pipe()
   local error_output = ""
@@ -226,8 +252,11 @@ function MagickCliProcessor.brightness(path, brightness, output_path)
     stdio = { nil, stdout, stderr },
     hide = true,
   }, function(code)
-    if code ~= 0 then error(error_output ~= "" and error_output or "Failed to adjust brightness") end
-    done = true
+    if code ~= 0 then
+      callback_error = error_output ~= "" and error_output or "Failed to adjust brightness"
+    else
+      done = true
+    end
   end)
 
   vim.loop.read_start(stderr, function(err, data)
@@ -236,9 +265,10 @@ function MagickCliProcessor.brightness(path, brightness, output_path)
   end)
 
   local success = vim.wait(10000, function()
-    return done
+    return done or callback_error ~= nil
   end, 10)
 
+  if callback_error then error(callback_error) end
   if not success then error("operation timed out") end
 
   return out_path
@@ -248,6 +278,7 @@ function MagickCliProcessor.saturation(path, saturation, output_path)
   guard()
   local out_path = output_path or path:gsub("%.([^.]+)$", "-sat.%1")
   local done = false
+  local callback_error = nil
   local stdout = vim.loop.new_pipe()
   local stderr = vim.loop.new_pipe()
   local error_output = ""
@@ -262,8 +293,11 @@ function MagickCliProcessor.saturation(path, saturation, output_path)
     stdio = { nil, stdout, stderr },
     hide = true,
   }, function(code)
-    if code ~= 0 then error(error_output ~= "" and error_output or "Failed to adjust saturation") end
-    done = true
+    if code ~= 0 then
+      callback_error = error_output ~= "" and error_output or "Failed to adjust saturation"
+    else
+      done = true
+    end
   end)
 
   vim.loop.read_start(stderr, function(err, data)
@@ -272,9 +306,10 @@ function MagickCliProcessor.saturation(path, saturation, output_path)
   end)
 
   local success = vim.wait(10000, function()
-    return done
+    return done or callback_error ~= nil
   end, 10)
 
+  if callback_error then error(callback_error) end
   if not success then error("operation timed out") end
 
   return out_path
@@ -284,6 +319,7 @@ function MagickCliProcessor.hue(path, hue, output_path)
   guard()
   local out_path = output_path or path:gsub("%.([^.]+)$", "-hue.%1")
   local done = false
+  local callback_error = nil
   local stdout = vim.loop.new_pipe()
   local stderr = vim.loop.new_pipe()
   local error_output = ""
@@ -298,8 +334,11 @@ function MagickCliProcessor.hue(path, hue, output_path)
     stdio = { nil, stdout, stderr },
     hide = true,
   }, function(code)
-    if code ~= 0 then error(error_output ~= "" and error_output or "Failed to adjust hue") end
-    done = true
+    if code ~= 0 then
+      callback_error = error_output ~= "" and error_output or "Failed to adjust hue"
+    else
+      done = true
+    end
   end)
 
   vim.loop.read_start(stderr, function(err, data)
@@ -308,9 +347,10 @@ function MagickCliProcessor.hue(path, hue, output_path)
   end)
 
   local success = vim.wait(10000, function()
-    return done
+    return done or callback_error ~= nil
   end, 10)
 
+  if callback_error then error(callback_error) end
   if not success then error("operation timed out") end
 
   return out_path
