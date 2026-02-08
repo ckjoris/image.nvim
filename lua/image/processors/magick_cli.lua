@@ -65,8 +65,8 @@ function MagickCliProcessor.convert_to_png(path, output_path)
   local stderr = vim.loop.new_pipe()
   local error_output = ""
 
-  -- for GIFs convert the first frame
-  if actual_format == "gif" then path = path .. "[0]" end
+  -- for GIFs/PDFs convert the first frame/page
+  if actual_format == "gif" or actual_format == "pdf" then path = path .. "[0]" end
 
   vim.loop.spawn(convert_cmd, {
     args = { path, "png:" .. out_path },
@@ -104,8 +104,8 @@ function MagickCliProcessor.get_dimensions(path)
   local output = ""
   local error_output = ""
 
-  -- GIF
-  if actual_format == "gif" then path = path .. "[0]" end
+  -- GIF/PDF
+  if actual_format == "gif" or actual_format == "pdf" then path = path .. "[0]" end
 
   vim.loop.spawn(has_magick and "magick" or "identify", {
     args = has_magick and { "identify", "-format", "%wx%h", path } or { "-format", "%wx%h", path },
